@@ -65,78 +65,6 @@ int tju_listen(tju_tcp_t* sock){
     sock->state = LISTEN;
     int hashval = cal_hash(sock->bind_addr.ip, sock->bind_addr.port, 0, 0);
     listen_socks[hashval] = sock; //注册该socket到l_hash
-
-    // 循环监听
-    while (TRUE) {
-        // 创建一个new_socket
-        tju_tcp_t* new_conn = (tju_tcp_t*)malloc(sizeof(tju_tcp_t));
-
-        //初始化new_conn
-        memcpy(new_conn, sock, sizeof(tju_tcp_t));
-        
-        // 阻塞等待接收SYN（状态改变在handle_packet里）
-        while (sock->state != SYN_RECV);
-        
-        new_conn->state = SYN_RECV;
-        sock->state = LISTEN;
-
-        // 设置new_conn对方地址
-        tju_sock_addr remote_addr;
-        remote_addr.ip = inet_network("10.0.0.2");  //具体的IP地址
-        remote_addr.port = 5678;  //从SYN包头获取......
-        new_conn->established_remote_addr = remote_addr;
-
-        // 设置new_conn本机地址
-        tju_sock_addr local_addr;
-        local_addr.ip = sock->bind_addr.ip;  //具体的IP地址
-        uint16_t port_tmp = generate_port(); // 随机分配一个port
-        // 检测端口是否被占用
-        int bind_flag = 0; //端口被占用
-        for (int i = 0; i < MAX_SOCK; i++) {
-            if (bind_socks[i]->port == port_tmp) {
-                bind_flag = 1;
-                break;
-            }
-        }
-        // 如果被占用
-        if (bind_flag) {
-            perror("ERROR: 端口被占用！\n");
-            exit(-1);
-        }
-        // 如果未被占用
-        else {
-            local_addr.port = port_tmp;
-            // 将socket, port放入b_hash
-            int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
-            bind_socks[hashval]->port = local_addr.port;
-            bind_socks[hashval]->sock = new_conn;
-        }
-        new_conn->established_local_addr = local_addr;
-
-        // 将new_conn放到e_hash和半连接列表中
-        int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
-        established_socks[hashval] = new_conn;
-        semi_conn_socks[hashval] = new_conn;
-
-        // 发送SYN,ACK
-        // RFC 793指出ISN可看作是一个32比特的计数器，每4ms加1
-        uint32_t isn_server = 1; // 服务器初始序列号
-        uint32_t ack = 0; //客户端的ack+1......
-        uint16_t plen = DEFAULT_HEADER_LEN;
-        uint8_t flags = cal_flags(0, 1, 0, 0, 1, 0, 0, 0);
-        char* msg = create_packet_buf(new_conn->established_local_addr.port, new_conn->established_remote_addr.port, 
-                isn_server, ack, DEFAULT_HEADER_LEN, plen, flags, 1, 0, NULL, 0);
-        sendToLayer3(msg, DEFAULT_HEADER_LEN);
-
-        // 阻塞等待进入ESTABLISHED
-        while (sock->state != ESTABLISHED);
-        //状态改变在handle_packet里......
-
-        // 将new_conn从半连接列表取出，放到全连接列表
-        semi_conn_socks[hashval] = NULL;
-        full_conn_socks[hashval] = new_conn;
-    }
-
     return 0;
 }
 
@@ -168,7 +96,6 @@ tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
         }
     }
 
-    // 助教写的：如果new_conn的创建过程放到了tju_handle_packet中 那么accept怎么拿到这个new_conn呢
     return new_conn;
 }
 
@@ -187,31 +114,52 @@ int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
     // 设置本地地址
     tju_sock_addr local_addr;
     local_addr.ip = inet_network("10.0.0.2");
-    uint16_t rand_num = 5678; // 这里应该用rand(time(0))来取某范围的随机数
-    // 检测在不在b_hash中......
-    local_addr.port = rand_num;
+    uint16_t port_tmp = generate_port(); // 随机分配一个port
+    // 检测端口是否被占用
+    int bind_flag = 0; //端口被占用
+    for (int i = 0; i < MAX_SOCK; i++) {
+        if (bind_socks[i]->port == port_tmp) {
+            bind_flag = 1;
+            break;
+        }
+    }
+    // 如果被占用
+    if (bind_flag) {
+        perror("ERROR: 端口被占用！\n");
+        exit(-1);
+    }
+    // 如果未被占用
+    else {
+        local_addr.port = port_tmp;
+        // 将socket, port放入b_hash
+        int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
+        bind_socks[hashval]->port = local_addr.port;
+        bind_socks[hashval]->sock = sock;
+    }
     sock->established_local_addr = local_addr;
 
     // 发送SYN
-    // RFC 793 [Postel 1981c]指出I S N可看作是一个32比特的计数器，每4ms加1
-    uint32_t seq = 1; // 客户端初始序列号
+    // RFC 793 [Postel 1981c]指出ISN可看作是一个32比特的计数器，每4ms加1
+    uint32_t isn_clnt = 1; // 客户端初始序列号
+    uint32_t ack = 0;
     uint16_t plen = DEFAULT_HEADER_LEN;
     uint8_t flags = cal_flags(0, 0, 0, 0, 1, 0, 0, 0);
-    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, seq, 0, 
-              DEFAULT_HEADER_LEN, plen, flags, 1, 0, NULL, 0);
+    uint16_t adv_win = 1;
+    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port,
+            isn_clnt, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
     sendToLayer3(msg, DEFAULT_HEADER_LEN);
 
     // 进入SYN_SENT状态
     sock->state = SYN_SENT;
 
     // 将socket放入e_hash
-    int hashval = cal_hash(local_addr.ip, local_addr.port, target_addr.ip, target_addr.port);
+    int hashval = cal_hash(sock->established_local_addr.ip, sock->established_local_addr.port, 
+                sock->established_remote_addr.ip, sock->established_remote_addr.port);
     established_socks[hashval] = sock;
 
-    // 阻塞等待进入ESTABLISHED状态
+    // 阻塞等待进入ESTABLISHED状态，状态的改变在tju_handle_packet
     while (sock->state != ESTABLISHED);
-    // 状态的改变在tju_handle_packet
-
+    
     return 0;
 }
 
@@ -284,20 +232,109 @@ int tju_recv(tju_tcp_t* sock, void *buffer, int len){
 */
 int tju_handle_packet(tju_tcp_t* sock, char* pkt){
     // 获取报文头部信息
-    uint16_t src = get_src(pkt);
-    uint16_t dst = get_dst(pkt);
-    uint32_t seq = get_seq(pkt);
-    uint32_t ack = get_ack(pkt);
-    uint16_t hlen = get_hlen(pkt);
-    uint16_t plen = get_plen(pkt);
-    uint8_t flags = get_flags(pkt);
-    uint16_t adv_win = get_advertised_window(pkt);
+    uint16_t pkt_src_port = get_src(pkt);
+    uint16_t pkt_dst_port = get_dst(pkt);
+    uint32_t pkt_seq = get_seq(pkt);
+    uint32_t pkt_ack = get_ack(pkt);
+    uint16_t pkt_hlen = get_hlen(pkt);
+    uint16_t pkt_plen = get_plen(pkt);
+    uint8_t pkt_flags = get_flags(pkt);
+    uint16_t pkt_adv_win = get_advertised_window(pkt);
 
+    // 如果在LISTEN状态下收到SYN
+    if (sock->state==LISTEN && pkt_flags==cal_flags(0, 0, 0, 0, 1, 0, 0, 0)) {
+        // 创建一个new_socket
+        tju_tcp_t* new_conn = (tju_tcp_t*)malloc(sizeof(tju_tcp_t));
 
-    // 如果在listen状态下收到SYN
-    if (sock->state==LISTEN && flags=8) {
-        sock->state = SYN_RECV;
+        //初始化new_conn
+        memcpy(new_conn, sock, sizeof(tju_tcp_t));
+
+        // 设置new_conn对方地址
+        tju_sock_addr remote_addr;
+        remote_addr.ip = inet_network("10.0.0.2");  //具体的IP地址
+        remote_addr.port = pkt_src_port;
+        new_conn->established_remote_addr = remote_addr;
+
+        // 设置new_conn本机地址
+        tju_sock_addr local_addr;
+        local_addr.ip = sock->bind_addr.ip;  //具体的IP地址
+        uint16_t port_tmp = generate_port(); // 随机分配一个port
+        // 检测端口是否被占用
+        int bind_flag = 0; //端口被占用
+        for (int i = 0; i < MAX_SOCK; i++) {
+            if (bind_socks[i]->port == port_tmp) {
+                bind_flag = 1;
+                break;
+            }
+        }
+        // 如果被占用
+        if (bind_flag) {
+            perror("ERROR: 端口被占用！\n");
+            exit(-1);
+        }
+        // 如果未被占用
+        else {
+            local_addr.port = port_tmp;
+            // 将socket, port放入b_hash
+            int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
+            bind_socks[hashval]->port = local_addr.port;
+            bind_socks[hashval]->sock = new_conn;
+        }
+        new_conn->established_local_addr = local_addr;
+
+        // 更改new_conn状态为SYN_RECV
+        new_conn->state = SYN_RECV;
+
+        // 将new_conn放到e_hash和半连接列表中
+        int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
+        established_socks[hashval] = new_conn;
+        semi_conn_socks[hashval] = new_conn;
+
+        // 发送SYN,ACK
+        // RFC 793指出ISN可看作是一个32比特的计数器，每4ms加1
+        uint32_t isn_server = 1; // 服务器初始序列号
+        uint32_t ack = pkt_ack + 1; //客户端的ack+1
+        uint16_t plen = DEFAULT_HEADER_LEN;
+        uint8_t flags = cal_flags(0, 1, 0, 0, 1, 0, 0, 0);
+        uint16_t adv_win = 1;
+        char* msg = create_packet_buf(new_conn->established_local_addr.port, new_conn->established_remote_addr.port, 
+                isn_server, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
+        sendToLayer3(msg, DEFAULT_HEADER_LEN);
     }
+
+
+    // 如果在SYN_SENT状态下收到SYN,ACK
+    if (sock->state==SYN_SENT && pkt_flags==cal_flags(0, 1, 0, 0, 1, 0, 0, 0)) {
+        // 发送ACK
+        uint32_t seq = pkt_ack; // seq == 收到的ack
+        uint32_t ack = pkt_ack + 1; //收到的ack+1
+        uint16_t plen = DEFAULT_HEADER_LEN;
+        uint8_t flags = cal_flags(0, 1, 0, 0, 0, 0, 0, 0);
+        uint16_t adv_win = 1;
+        char* data = NULL; // 第三次握手可以传输数据
+        int data_len = 0;
+        char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
+                seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, data, data_len);
+        sendToLayer3(msg, DEFAULT_HEADER_LEN);
+
+        // 改变状态
+        sock->state = ESTABLISHED;
+    }
+
+
+    // 如果在SYN_RECV状态下收到ACK
+    if (sock->state==SYN_RECV && pkt_flags==cal_flags(0, 1, 0, 0, 0, 0, 0, 0)) {
+        sock->state = ESTABLISHED;
+
+        // 将new_conn从半连接列表取出，放到全连接列表
+        int hashval = cal_hash(sock->established_local_addr.ip, sock->established_local_addr.port, 
+                sock->established_remote_addr.ip, sock->established_remote_addr.port);
+        semi_conn_socks[hashval] = NULL;
+        full_conn_socks[hashval] = sock;
+    }
+
+
+
 
     // 把收到的数据（包体）放到接受缓冲区
     uint32_t data_len = get_plen(pkt) - DEFAULT_HEADER_LEN;//包体长度
