@@ -72,7 +72,7 @@ typedef struct {
 
 // TCP 接受窗口
 typedef struct {
-	char received[TCP_RECVWN_SIZE];
+	char received[TCP_RECVWN_SIZE]; //缓冲区
 
 //   received_packet_t* head;
 //   char buf[TCP_RECVWN_SIZE];

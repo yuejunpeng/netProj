@@ -17,7 +17,7 @@ tju_tcp_t* tju_socket(){
     sock->received_buf = NULL;
     sock->received_len = 0;
     
-    if(pthread_cond_init(&sock->wait_cond, NULL) != 0){
+    if(pthread_cond_init(&sock->wait_cond, NULL) != 0){//初始化成功返回0
         perror("ERROR condition variable not set\n");
         exit(-1);
     }
@@ -55,10 +55,15 @@ int tju_listen(tju_tcp_t* sock){
 因为只要该函数返回, 用户就可以马上使用该socket进行send和recv
 */
 tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
+    // 创建一个new_socket
     tju_tcp_t* new_conn = (tju_tcp_t*)malloc(sizeof(tju_tcp_t));
     memcpy(new_conn, listen_sock, sizeof(tju_tcp_t));
 
+    //初始化new_conn
+    //......
+
     tju_sock_addr local_addr, remote_addr;
+    // while (listen_sock->state != SYN_RECV); 
     /*
      这里涉及到TCP连接的建立
      正常来说应该是收到客户端发来的SYN报文
@@ -66,7 +71,8 @@ tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
      换句话说 下面的处理流程其实不应该放在这里 应该在tju_handle_packet中
     */ 
     remote_addr.ip = inet_network("10.0.0.2");  //具体的IP地址
-    remote_addr.port = 5678;  //端口
+    // rand()随机分配一个port，查b_hash
+    remote_addr.port = 5678;  //从包头获取
 
     local_addr.ip = listen_sock->bind_addr.ip;  //具体的IP地址
     local_addr.port = listen_sock->bind_addr.port;  //端口
@@ -75,7 +81,10 @@ tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
     new_conn->established_remote_addr = remote_addr;
 
     // 这里应该是经过三次握手后才能修改状态为ESTABLISHED
-    new_conn->state = ESTABLISHED;
+   // while(new_conn->state != SYN_RECV);
+   // 发送控制报文SYN=1，ACK=1
+   // while(new_conn->state != ESTABLISHED);
+
 
     // 将新的conn放到内核建立连接的socket哈希表中
     int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
@@ -98,6 +107,7 @@ tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
 */
 int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
 
+    // 设置地址
     sock->established_remote_addr = target_addr;
 
     tju_sock_addr local_addr;
@@ -109,7 +119,10 @@ int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
     // 实际在linux中 connect调用后 会进入一个while循环
     // 循环跳出的条件是socket的状态变为ESTABLISHED 表面看上去就是 正在连接中 阻塞
     // 而状态的改变在别的地方进行 在我们这就是tju_handle_packet
-    sock->state = ESTABLISHED;
+    // 发送SYN
+    //sock->state = SYN_SENT;
+    // while (sock->state != ESTABLISHED);
+    
 
     // 将建立了连接的socket放入内核 已建立连接哈希表中
     int hashval = cal_hash(local_addr.ip, local_addr.port, target_addr.ip, target_addr.port);
@@ -121,6 +134,7 @@ int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
 
 /*
 发送数据
+len是数据长度，不包含包头
 */
 int tju_send(tju_tcp_t* sock, const void *buffer, int len){
     // 这里当然不能直接简单地调用sendToLayer3
@@ -142,6 +156,7 @@ int tju_send(tju_tcp_t* sock, const void *buffer, int len){
 
 /*
 接收数据
+len是数据长度，不包含包头
 */
 int tju_recv(tju_tcp_t* sock, void *buffer, int len){
     while(sock->received_len<=0){
@@ -150,11 +165,13 @@ int tju_recv(tju_tcp_t* sock, void *buffer, int len){
 
     while(pthread_mutex_lock(&(sock->recv_lock)) != 0); // 加锁
 
-    int read_len = 0;
-    if (sock->received_len >= len){ // 从中读取len长度的数据
+    int read_len = 0; //实际读取的长度
+    /*从中读取len长度的数据
+    lem: 要读取的数据长度*/
+    if (sock->received_len >= len){ //不能从缓冲区一次读取
         read_len = len;
     }else{
-        read_len = sock->received_len; // 读取sock->received_len长度的数据(全读出来)
+        read_len = sock->received_len; // 从缓冲区读取所有数据
     }
 
     memcpy(buffer, sock->received_buf, read_len);
@@ -170,6 +187,7 @@ int tju_recv(tju_tcp_t* sock, void *buffer, int len){
         sock->received_buf = NULL;
         sock->received_len = 0;
     }
+
     pthread_mutex_unlock(&(sock->recv_lock)); // 解锁
 
     return 0;
@@ -182,7 +200,7 @@ int tju_recv(tju_tcp_t* sock, void *buffer, int len){
 */
 int tju_handle_packet(tju_tcp_t* sock, char* pkt){
     
-    uint32_t data_len = get_plen(pkt) - DEFAULT_HEADER_LEN;
+    uint32_t data_len = get_plen(pkt) - DEFAULT_HEADER_LEN;//包体长度
 
     // 把收到的数据放到接受缓冲区
     while(pthread_mutex_lock(&(sock->recv_lock)) != 0); // 加锁
@@ -207,5 +225,8 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 关闭 TCP socket
 */
 int tju_close (tju_tcp_t* sock){
-    return 0;
+    if (sock->state != ESTABLISHED)
+        return 0;
+
+    // 发送FIN
 }
