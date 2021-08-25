@@ -27,7 +27,7 @@ typedef struct {
 	uint32_t ack_num; 			//4 bytes ack number
 	uint16_t hlen;				//2 bytes 包头长 这个项目里全是20
 	uint16_t plen;				//2 bytes 包总长 包括包头和包携带的数据 20+数据长度 注意总长度不能超过MAX_LEN(1400) 防止IP层分片
-	uint8_t flags;				//1 byte  标志位 比如 SYN FIN ACK 等
+	uint8_t flags;				//1 byte  标志位，分别为URG、ACK、PSH、RST、SYN、FIN、EXT_1、EXT_2
 	uint16_t advertised_window; //2 bytes 接收方发送给发送方的建议窗口大小 用于流量控制
     uint8_t ext;				//1 byte  一些额外的数据 在这个项目里是为了将header的大小凑整到20bytes 没有实际意义
 } tju_header_t;
@@ -78,6 +78,8 @@ uint8_t get_flags(char* msg);
 uint16_t get_advertised_window(char* msg);
 uint8_t get_ext(char* msg);
 
+/*计算数据包头部的flags*/
+uint8_t cal_flags(int URG, int ACK, int PSH, int RST, int SYN, int FIN, int EXT_1, int EXT_2);
 
 /*############################################## 下面是实现上面函数功能的辅助函数 用户没必要调用 ##############################################*/
 char* packet_to_buf(tju_packet_t* packet);

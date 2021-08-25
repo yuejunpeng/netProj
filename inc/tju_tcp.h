@@ -53,5 +53,9 @@ int tju_close (tju_tcp_t* sock);
 
 
 int tju_handle_packet(tju_tcp_t* sock, char* pkt);
+
+// 随机分配一个port
+uint16_t generate_port();
+
 #endif
 

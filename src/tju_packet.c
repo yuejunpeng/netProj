@@ -124,6 +124,11 @@ uint8_t get_ext(char* msg){
     return var;
 }
 
+/*计算数据包头部的flags*/
+uint8_t cal_flags(int URG, int ACK, int PSH, int RST, int SYN, int FIN, int EXT_1, int EXT_2){
+    uint8_t flags = URG*128 + ACK*64 + PSH*32 + RST*16 + SYN*8 + FIN*4 + EXT_1*2 + EXT_2;
+    return flags;
+}
 
 
 /*############################################## 下面是实现上面函数功能的辅助函数 用户没必要调用 ##############################################*/
