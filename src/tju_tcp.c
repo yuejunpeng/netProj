@@ -20,8 +20,10 @@ tju_tcp_t* tju_socket(){
         exit(-1);
     }
 
+    sock->window.wnd_send = NULL;
     sock->window.wnd_recv = NULL;
-    sock->window.wnd_recv = NULL;
+
+    printf("socket创建完成！\n");
 
     return sock;
 }
@@ -30,7 +32,9 @@ tju_tcp_t* tju_socket(){
 /*
 绑定监听的地址
 */
-int tju_bind(tju_tcp_t* sock, tju_sock_addr bind_addr){
+int tju_bind(tju_tcp_t *sock, tju_sock_addr bind_addr) {
+    int hashval = cal_hash(bind_addr.ip, bind_addr.port, 0, 0);
+
     // 检测端口是否被占用
     int bind_flag = 0; //端口被占用
     for (int i = 0; i < MAX_SOCK; i++) {
@@ -40,19 +44,23 @@ int tju_bind(tju_tcp_t* sock, tju_sock_addr bind_addr){
         }
     }
 
+    // 如果未被占用
+    if (!bind_flag) {
+        sock->bind_addr = bind_addr;
+
+        // 存入b_hash
+        bind_socks[hashval]->port = sock->bind_addr.port;
+        bind_socks[hashval]->sock = (tju_tcp_t*) malloc(sizeof(tju_tcp_t));
+        bind_socks[hashval]->sock = sock;
+        printf("bind成功!\n");
+    }
+
     // 如果被占用
     if (bind_flag) {
-        perror("ERROR: 端口被占用！\n");
+        perror("ERROR: 端口被占用，bind失败！\n");
         exit(-1);
     }
-    // 如果未被占用
-    else {
-        sock->bind_addr = bind_addr;
-        // 将socket, port放入b_hash
-        int hashval = cal_hash(sock->bind_addr.ip, sock->bind_addr.port, 0, 0);
-        bind_socks[hashval]->port = sock->bind_addr.port;
-        bind_socks[hashval]->sock = sock;
-    } 
+
     return 0;
 }
 
@@ -65,14 +73,14 @@ int tju_listen(tju_tcp_t* sock){
     sock->state = LISTEN;
     int hashval = cal_hash(sock->bind_addr.ip, sock->bind_addr.port, 0, 0);
     listen_socks[hashval] = sock; //注册该socket到l_hash
+    printf("listen完成！\n");
     return 0;
 }
+
 
 /*
 接受连接 
 返回与客户端通信用的socket
-这里返回的socket一定是已经完成3次握手建立了连接的socket
-因为只要该函数返回, 用户就可以马上使用该socket进行send和recv
 */
 tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
     int flag = 0; //全连接列表里有socket
@@ -96,6 +104,8 @@ tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
         }
     }
 
+    printf("accept完成！\n");
+
     return new_conn;
 }
 
@@ -104,61 +114,65 @@ tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
 连接到服务端
 该函数以一个socket为参数
 调用函数前, 该socket还未建立连接
-函数正常返回后, 该socket一定是已经完成了3次握手, 建立了连接
-因为只要该函数返回, 用户就可以马上使用该socket进行send和recv
 */
 int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
     // 设置对方地址
     sock->established_remote_addr = target_addr;
 
-    // 设置本地地址
+    // 设置本地IP
     tju_sock_addr local_addr;
     local_addr.ip = inet_network("10.0.0.2");
-    uint16_t port_tmp = generate_port(); // 随机分配一个port
-    // 检测端口是否被占用
-    int bind_flag = 0; //端口被占用
-    for (int i = 0; i < MAX_SOCK; i++) {
-        if (bind_socks[i]->port == port_tmp) {
-            bind_flag = 1;
+
+    // 分配端口
+    while (TRUE) {
+        uint16_t port_tmp = generate_port(); // 随机分配一个port
+        int hashval = cal_hash(local_addr.ip, port_tmp, target_addr.ip, target_addr.port);
+
+        // 检测端口是否被占用
+        int bind_flag = 0; //端口被占用
+        for (int i = 0; i < MAX_SOCK; i++) {
+            if (bind_socks[i]->port == port_tmp) {
+                bind_flag = 1;
+                break;
+            }
+        }
+
+        // 如果未被占用
+        if (!bind_flag) {
+            local_addr.port = port_tmp;
+
+            // 存入b_hash
+            bind_socks[hashval]->port = port_tmp;
+            bind_socks[hashval]->sock = (tju_tcp_t*) malloc(sizeof(tju_tcp_t));
+            bind_socks[hashval]->sock = sock;
+            printf("分配端口成功!\n");
             break;
         }
+
+        // 如果被占用
+        if (bind_flag) {
+            printf("端口被占用，重新分配端口！\n");
+        }
     }
-    // 如果被占用
-    if (bind_flag) {
-        perror("ERROR: 端口被占用！\n");
-        exit(-1);
-    }
-    // 如果未被占用
-    else {
-        local_addr.port = port_tmp;
-        // 将socket, port放入b_hash
-        int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
-        bind_socks[hashval]->port = local_addr.port;
-        bind_socks[hashval]->sock = sock;
-    }
+
+    // 设置本地地址
     sock->established_local_addr = local_addr;
-
-    // 发送SYN
-    // RFC 793 [Postel 1981c]指出ISN可看作是一个32比特的计数器，每4ms加1
-    uint32_t isn_clnt = 1; // 客户端初始序列号
-    uint32_t ack = 0;
-    uint16_t plen = DEFAULT_HEADER_LEN;
-    uint8_t flags = cal_flags(0, 0, 0, 0, 1, 0, 0, 0);
-    uint16_t adv_win = 1;
-    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port,
-            isn_clnt, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
-    sendToLayer3(msg, DEFAULT_HEADER_LEN);
-
-    // 进入SYN_SENT状态
-    sock->state = SYN_SENT;
 
     // 将socket放入e_hash
     int hashval = cal_hash(sock->established_local_addr.ip, sock->established_local_addr.port, 
                 sock->established_remote_addr.ip, sock->established_remote_addr.port);
     established_socks[hashval] = sock;
 
+    // 发送SYN
+    send_syn(sock, 1, 0, TCP_RECVWN_SIZE);
+
+    // 进入SYN_SENT状态
+    sock->state = SYN_SENT;
+
     // 阻塞等待进入ESTABLISHED状态，状态的改变在tju_handle_packet
     while (sock->state != ESTABLISHED);
+
+    printf("connect完成！\n");
     
     return 0;
 }
@@ -169,19 +183,23 @@ int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
 len是数据长度，不包含包头
 */
 int tju_send(tju_tcp_t* sock, const void *buffer, int len){
-    // 这里当然不能直接简单地调用sendToLayer3
+
     char* data = malloc(len);
     memcpy(data, buffer, len);
 
     char* msg;
     uint32_t seq = 464;
+    uint32_t ack = 0;
     uint16_t plen = DEFAULT_HEADER_LEN + len;
+    uint16_t adv_win = TCP_RECVWN_SIZE;
 
-    msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, seq, 0, 
-              DEFAULT_HEADER_LEN, plen, NO_FLAG, 1, 0, data, len);
-
+    msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
+            seq, ack, DEFAULT_HEADER_LEN, plen, NO_FLAG, adv_win, 0, data, len);
     sendToLayer3(msg, plen);
-    
+
+    free(data);
+
+    printf("发送数据成功！");
     return 0;
 }
 
@@ -191,7 +209,7 @@ int tju_send(tju_tcp_t* sock, const void *buffer, int len){
 len是数据长度，不包含包头
 */
 int tju_recv(tju_tcp_t* sock, void *buffer, int len){
-    while(sock->received_len<=0){
+    while(sock->received_len <= 0){
         // 阻塞
     }
 
@@ -202,7 +220,8 @@ int tju_recv(tju_tcp_t* sock, void *buffer, int len){
     lem: 要读取的数据长度*/
     if (sock->received_len >= len){ //不能从缓冲区一次读取
         read_len = len;
-    }else{
+    }
+    else{
         read_len = sock->received_len; // 从缓冲区读取所有数据
     }
 
@@ -222,9 +241,10 @@ int tju_recv(tju_tcp_t* sock, void *buffer, int len){
 
     pthread_mutex_unlock(&(sock->recv_lock)); // 解锁
 
+    printf("接收数据成功！");
+
     return 0;
 }
-
 
 
 /*
@@ -241,13 +261,34 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
     uint8_t pkt_flags = get_flags(pkt);
     uint16_t pkt_adv_win = get_advertised_window(pkt);
 
-    // 如果在LISTEN状态下收到SYN
+    // 如果在LISTEN状态下收到SYN（第一次握手）
     if (sock->state==LISTEN && pkt_flags==cal_flags(0, 0, 0, 0, 1, 0, 0, 0)) {
+        printf("处于listen状态下，收到SYN（第一次握手）\n");
         // 创建一个new_socket
         tju_tcp_t* new_conn = (tju_tcp_t*)malloc(sizeof(tju_tcp_t));
 
         //初始化new_conn
-        memcpy(new_conn, sock, sizeof(tju_tcp_t));
+        new_conn->state = LISTEN;// 有待讨论
+
+        pthread_mutex_init(&(new_conn->send_lock), NULL);
+        new_conn->sending_buf = NULL;
+        new_conn->sending_len = 0;
+
+        pthread_mutex_init(&(new_conn->recv_lock), NULL);
+        new_conn->received_buf = NULL;
+        new_conn->received_len = 0;
+        
+        if(pthread_cond_init(&new_conn->wait_cond, NULL) != 0){//初始化成功返回0
+            perror("ERROR condition variable not set\n");
+            exit(-1);
+        }
+
+        new_conn->window.wnd_send = (sender_window_t*)malloc(sizeof(sender_window_t));
+        new_conn->window.wnd_recv = (receiver_window_t*)malloc(sizeof(receiver_window_t));
+        new_conn->window.wnd_send->base = 1;//new
+        new_conn->window.wnd_send->nextseq = 1;//new
+        new_conn->window.wnd_send->rwnd = TCP_RECVWN_SIZE ;//new new new
+        printf("new_conn创建完成！\n");
 
         // 设置new_conn对方地址
         tju_sock_addr remote_addr;
@@ -255,31 +296,43 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         remote_addr.port = pkt_src_port;
         new_conn->established_remote_addr = remote_addr;
 
-        // 设置new_conn本机地址
+        // 设置new_conn本机IP
         tju_sock_addr local_addr;
-        local_addr.ip = sock->bind_addr.ip;  //具体的IP地址
-        uint16_t port_tmp = generate_port(); // 随机分配一个port
-        // 检测端口是否被占用
-        int bind_flag = 0; //端口被占用
-        for (int i = 0; i < MAX_SOCK; i++) {
-            if (bind_socks[i]->port == port_tmp) {
-                bind_flag = 1;
+        local_addr.ip = new_conn->bind_addr.ip;  //具体的IP地址
+
+        // 分配端口
+        while (TRUE) {
+            uint16_t port_tmp = generate_port(); // 随机分配一个port
+            int hashval = cal_hash(local_addr.ip, port_tmp, remote_addr.ip, remote_addr.port);
+
+            // 检测端口是否被占用
+            int bind_flag = 0; //端口被占用
+            for (int i = 0; i < MAX_SOCK; i++) {
+                if (bind_socks[i]->port == port_tmp) {
+                    bind_flag = 1;
+                    break;
+                }
+            }
+
+            // 如果未被占用
+            if (!bind_flag) {
+                local_addr.port = port_tmp;
+
+                // 存入b_hash
+                bind_socks[hashval]->port = port_tmp;
+                bind_socks[hashval]->sock = (tju_tcp_t*) malloc(sizeof(tju_tcp_t));
+                bind_socks[hashval]->sock = new_conn;
+                printf("分配端口成功!\n");
                 break;
             }
+
+            // 如果被占用
+            if (bind_flag) {
+                printf("端口被占用，重新分配端口！\n");
+            }
         }
-        // 如果被占用
-        if (bind_flag) {
-            perror("ERROR: 端口被占用！\n");
-            exit(-1);
-        }
-        // 如果未被占用
-        else {
-            local_addr.port = port_tmp;
-            // 将socket, port放入b_hash
-            int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
-            bind_socks[hashval]->port = local_addr.port;
-            bind_socks[hashval]->sock = new_conn;
-        }
+
+        // 设置本机地址
         new_conn->established_local_addr = local_addr;
 
         // 更改new_conn状态为SYN_RECV
@@ -291,77 +344,219 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         semi_conn_socks[hashval] = new_conn;
 
         // 发送SYN,ACK
-        // RFC 793指出ISN可看作是一个32比特的计数器，每4ms加1
-        uint32_t isn_server = 1; // 服务器初始序列号
-        uint32_t ack = pkt_ack + 1; //客户端的ack+1
-        uint16_t plen = DEFAULT_HEADER_LEN;
-        uint8_t flags = cal_flags(0, 1, 0, 0, 1, 0, 0, 0);
-        uint16_t adv_win = 1;
-        char* msg = create_packet_buf(new_conn->established_local_addr.port, new_conn->established_remote_addr.port, 
-                isn_server, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
-        sendToLayer3(msg, DEFAULT_HEADER_LEN);
+        send_syn_ack(new_conn, 1, pkt_ack+1, TCP_RECVWN_SIZE);
+
+        printf("第一次握手完成！");
     }
 
 
-    // 如果在SYN_SENT状态下收到SYN,ACK
+    // 如果在SYN_SENT状态下收到SYN,ACK（第二次握手）
     if (sock->state==SYN_SENT && pkt_flags==cal_flags(0, 1, 0, 0, 1, 0, 0, 0)) {
+        printf("处于SYN_SENT状态下，收到SYN,ACK（第二次握手）\n");
         // 发送ACK
-        uint32_t seq = pkt_ack; // seq == 收到的ack
-        uint32_t ack = pkt_ack + 1; //收到的ack+1
-        uint16_t plen = DEFAULT_HEADER_LEN;
-        uint8_t flags = cal_flags(0, 1, 0, 0, 0, 0, 0, 0);
-        uint16_t adv_win = 1;
-        char* data = NULL; // 第三次握手可以传输数据
-        int data_len = 0;
-        char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
-                seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, data, data_len);
-        sendToLayer3(msg, DEFAULT_HEADER_LEN);
+        send_ack(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
 
         // 改变状态
         sock->state = ESTABLISHED;
+
+        printf("第二次握手完成！");
     }
 
 
-    // 如果在SYN_RECV状态下收到ACK
+    // 如果在SYN_RECV状态下收到ACK（第三次握手）
     if (sock->state==SYN_RECV && pkt_flags==cal_flags(0, 1, 0, 0, 0, 0, 0, 0)) {
-        sock->state = ESTABLISHED;
-
+        printf("处于SYN_RECV状态下，收到ACK（第三次握手）\n");
+        
         // 将new_conn从半连接列表取出，放到全连接列表
         int hashval = cal_hash(sock->established_local_addr.ip, sock->established_local_addr.port, 
                 sock->established_remote_addr.ip, sock->established_remote_addr.port);
         semi_conn_socks[hashval] = NULL;
         full_conn_socks[hashval] = sock;
+
+        sock->state = ESTABLISHED;
+
+        printf("第三次握手完成！");
     }
 
+    
+    // 如果在SYN_SENT状态下收到SYN（同时打开）
+    if (sock->state==SYN_SENT && pkt_flags==cal_flags(0, 0, 0, 0, 1, 0, 0, 0)) {
+        printf("处于SYN_SENT状态下，收到SYN（同时打开）\n");
+
+        // 发送SYN,ACK
+        send_syn_ack(sock, 1, pkt_seq+1, TCP_RECVWN_SIZE);
+
+        // 进入SYN_RECV状态
+        sock->state = SYN_RECV;
+
+        printf("进入SYN_RECV，过程结束\n");
+    }
+
+
+    // 如果在SYN_SENT状态时超时或者close（待实现）
+    // 进入close状态
+
+
+    // 如果在ESTABLISHED状态下收到FIN（第二、三次挥手）
+    if (sock->state==ESTABLISHED && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
+        printf("处于ESTABLISHED状态下，收到FIN（第二、三次挥手）\n");
+        // 发送FIN,ACK
+        send_fin_ack(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
+
+        // 进入CLOSE_WAIT状态
+        sock->state = CLOSE_WAIT;
+
+        printf("第二次挥手完成！\n");
+
+        // 等待数据发送完
+        sleep(5); // 这里要研究研究
+
+        // 发送FIN
+        send_fin(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
+
+        // 进入LAST_ACK
+        sock->state = LAST_ACK;
+
+        printf("第三次挥手完成！\n");
+    }
+
+
+    // 如果在LAST_ACK状态收到FIN,ACK（即将关闭）
+    if (sock->state==LAST_ACK && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
+        printf("处于LAST_ACK状态下，收到FIN,ACK（即将关闭）\n");
+
+        sock->state = CLOSED;
+
+        printf("进入CLOSED状态\n");
+    }
+
+
+    // 如果在FIN_WAIT_1状态收到FIN,ACK（第二次挥手）
+    if (sock->state==FIN_WAIT_1 && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
+        printf("处于FIN_WAIT_1状态下，收到FIN,ACK（第二次挥手）\n");
+
+        sock->state = FIN_WAIT_2;
+
+        printf("进入FIN_WAIT_2\n");
+    }
+
+
+    // 如果在FIN_WAIT_2状态收到FIN（第四次挥手）
+    if (sock->state==FIN_WAIT_2 && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
+        printf("处于FIN_WAIT_2状态下，收到FIN（第四次握手）\n");
+
+        // 发送FIN,ACK
+        send_fin_ack(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
+
+        // 进入TIME_WAIT状态
+        sock->state = TIME_WAIT;
+
+        printf("第四次挥手完成\n");
+
+        // 等待2MSS后关闭
+        sleep(5); // 还需进一步研究
+        sock->state = CLOSED;
+
+        printf("等待2MSS后，进入CLOSED状态\n");
+    }
+
+
+    // 如果在FIN_WAIT_1状态收到FIN（同时关闭）
+    if (sock->state==FIN_WAIT_1 && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
+        printf("处于FIN_WAIT_1状态下，收到FIN（同时关闭）\n");
+
+        // 发送FIN,ACK
+        send_fin_ack(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
+
+        // 进入CLOSING状态
+        sock->state = CLOSING;
+
+        printf("进入CLOSING\n");
+    }
+
+
+    // 如果在CLOSING状态收到FIN,ACK（同时关闭）
+    if (sock->state==CLOSING && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
+        printf("处于CLOSING状态下，收到FIN,ACK（同时关闭）\n");
+
+        // 进入TIME_WAIT状态
+        sock->state = TIME_WAIT;
+        printf("进入TIME_WAIT\n");
+
+        // 等待2MSS后关闭
+        sleep(5); // 还需进一步研究
+        sock->state = CLOSED;
+        printf("等待2MSS后，进入CLOSED状态\n");
+    }
 
 
 
     // 把收到的数据（包体）放到接受缓冲区
     uint32_t data_len = get_plen(pkt) - DEFAULT_HEADER_LEN;//包体长度
-    while(pthread_mutex_lock(&(sock->recv_lock)) != 0); // 加锁
 
-    if(sock->received_buf == NULL) { // 如果接收缓冲区未初始化
+    while(pthread_mutex_lock(&(sock->recv_lock)) != 0); // 加锁
+    // 如果接收缓冲区未初始化
+    if(sock->received_buf == NULL) { 
         sock->received_buf = malloc(data_len);
     }
-    else {// 如果接收缓冲区已经初始化
+    // 如果接收缓冲区已经初始化
+    else {
         sock->received_buf = realloc(sock->received_buf, sock->received_len + data_len);
     }
     memcpy(sock->received_buf + sock->received_len, pkt + DEFAULT_HEADER_LEN, data_len);
     sock->received_len += data_len;
     pthread_mutex_unlock(&(sock->recv_lock)); // 解锁
 
-
     return 0;
 }
-
 
 
 /*
 关闭 TCP socket
 */
 int tju_close (tju_tcp_t* sock){
+    printf("开始执行close\n");
+
+    if (sock->state==ESTABLISHED) {
+        // 发送FIN
+        send_fin(sock, 1, 1, TCP_RECVWN_SIZE);
+
+        // 进入FIN_WAIT_1
+        sock->state = FIN_WAIT_1;
+        printf("状态由ESTABLISHED变为FIN_WAIT_1\n");
+    }
+
+    if (sock->state==CLOSE_WAIT) {
+        // 发送FIN
+        send_fin(sock, 1, 1, TCP_RECVWN_SIZE);
+
+        sock->state = LAST_ACK;
+        printf("状态由CLOSE_WAIT变为LAST_ACK\n");
+    }
+
+    if (sock->state==SYN_RECV) {
+        send_fin(sock, 1, 1, TCP_RECVWN_SIZE);
+        sock->state = FIN_WAIT_1;
+        printf("状态由SYN_RECV变为FIN_WAIT_1\n");
+    }
+
+    // 阻塞等待状态为CLOSED
+    while(sock->state != CLOSED);
+    printf("状态变为CLOSED\n");
+
+    // 清理占用
+    int hashval = cal_hash(sock->established_local_addr.ip, sock->established_local_addr.port, 
+                sock->established_remote_addr.ip, sock->established_remote_addr.port);
+    established_socks[hashval] = NULL;
+    full_conn_socks[hashval] = NULL;
+    free(sock);
+    sock = NULL;
+    // 还有一些要考虑free......
+
+    printf("close完成！\n");
     return 0;
 }
+
 
 // 随机分配一个port
 uint16_t generate_port() {
@@ -369,3 +564,59 @@ uint16_t generate_port() {
     uint16_t port = rand()%10001 + 3333; //3333 - 13333
     return port;
 }
+
+// 发送SYN
+void send_syn(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
+    uint16_t plen = DEFAULT_HEADER_LEN;
+    uint8_t flags = cal_flags(0, 0, 0, 0, 1, 0, 0, 0);
+    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port,
+            seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
+    sendToLayer3(msg, DEFAULT_HEADER_LEN);
+    printf("已经发送一个SYN！\n");
+}
+
+
+// 发送SYN,ACK
+void send_syn_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
+    uint16_t plen = DEFAULT_HEADER_LEN;
+    uint8_t flags = cal_flags(0, 1, 0, 0, 1, 0, 0, 0);
+    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
+            seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
+    sendToLayer3(msg, DEFAULT_HEADER_LEN);
+    printf("已经发送一个SYN,ACK！\n");
+}
+
+
+// 发送FIN
+void send_fin(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
+    uint16_t plen = DEFAULT_HEADER_LEN;
+    uint8_t flags = cal_flags(0, 0, 0, 0, 0, 1, 0, 0);
+    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
+            seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
+    sendToLayer3(msg, DEFAULT_HEADER_LEN);
+    printf("已经发送一个FIN！\n");
+}
+
+
+// 发送FIN,ACK
+void send_fin_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
+    uint16_t plen = DEFAULT_HEADER_LEN;
+    uint8_t flags = cal_flags(0, 1, 0, 0, 0, 1, 0, 0);
+    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
+            seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
+    sendToLayer3(msg, DEFAULT_HEADER_LEN);
+    printf("已经发送一个FIN,ACK！\n");
+}
+
+
+// 发送ACK
+void send_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
+    uint16_t plen = DEFAULT_HEADER_LEN;
+    uint8_t flags = cal_flags(0, 1, 0, 0, 0, 0, 0, 0);
+    char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
+            seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
+    sendToLayer3(msg, DEFAULT_HEADER_LEN);
+    printf("已经发送一个ACK！\n");
+}
+
+

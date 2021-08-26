@@ -8,10 +8,10 @@
 
 #define MAX_SOCK 32
 
-// socket, port键值对
+// sock, port键值对
 typedef struct {
-  tju_tcp_t* sock; //socket
-  uint16_t port; //port;
+	tju_tcp_t* sock;
+  uint16_t port;
 }tju_tcp_port_t;
 
 // 3张hash表

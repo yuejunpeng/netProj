@@ -57,14 +57,14 @@
 typedef struct {
 	uint16_t window_size;
 
-//   uint32_t base;
-//   uint32_t nextseq;
+  uint32_t base;
+  uint32_t nextseq;
 //   uint32_t estmated_rtt;
 //   int ack_cnt;
 //   pthread_mutex_t ack_cnt_lock;
 //   struct timeval send_time;
 //   struct timeval timeout;
-//   uint16_t rwnd; 
+  uint16_t rwnd; 
 //   int congestion_status;
 //   uint16_t cwnd; 
 //   uint16_t ssthresh; 

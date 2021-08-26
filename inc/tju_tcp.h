@@ -57,5 +57,21 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt);
 // 随机分配一个port
 uint16_t generate_port();
 
+// 发送SYN
+void send_syn(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win);
+
+// 发送SYN的ACK
+void send_syn_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win);
+
+// 发送FIN
+void send_fin(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win);
+
+// 发送FIN的ACK
+void send_fin_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win);
+
+// 发送ACK
+void send_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win);
+
+
 #endif
 
