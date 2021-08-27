@@ -1,8 +1,7 @@
 #include "tju_tcp.h"
 
-/*
-创建并初始化 TCP socket
-*/
+
+// 创建并初始化TCP socket
 tju_tcp_t* tju_socket(){
     tju_tcp_t* sock = (tju_tcp_t*)malloc(sizeof(tju_tcp_t));
     sock->state = CLOSED;
@@ -29,9 +28,8 @@ tju_tcp_t* tju_socket(){
 }
 
 
-/*
-绑定监听的地址
-*/
+
+// 绑定监听的地址
 int tju_bind(tju_tcp_t *sock, tju_sock_addr bind_addr) {
     // int hashval = cal_hash(bind_addr.ip, bind_addr.port, 0, 0);
 
@@ -69,9 +67,7 @@ int tju_bind(tju_tcp_t *sock, tju_sock_addr bind_addr) {
 }
 
 
-/*
-被动打开，监听bind的地址和端口
-*/
+// 被动打开，监听bind的地址
 int tju_listen(tju_tcp_t* sock){
     // 进入listen状态
     sock->state = LISTEN;
@@ -82,10 +78,7 @@ int tju_listen(tju_tcp_t* sock){
 }
 
 
-/*
-接受连接 
-返回与客户端通信用的socket
-*/
+// 接受连接, 返回与客户端通信用的socket
 tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
     int flag = 0; //全连接列表里有socket
     int index; // 已建立连接的socket索引
@@ -114,11 +107,7 @@ tju_tcp_t* tju_accept(tju_tcp_t* listen_sock){
 }
 
 
-/*
-连接到服务端
-该函数以一个socket为参数
-调用函数前, 该socket还未建立连接
-*/
+// 连接到服务端
 int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
     // 设置对方地址
     sock->established_remote_addr = target_addr;
@@ -191,12 +180,9 @@ int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
 }
 
 
-/*
-发送数据
-len是数据长度，不包含包头
-*/
+/* 发送数据
+len是包体长度(不包包头)，buffer是待发送消息的起始指针*/
 int tju_send(tju_tcp_t* sock, const void *buffer, int len){
-
     char* data = malloc(len);
     memcpy(data, buffer, len);
 
@@ -217,18 +203,14 @@ int tju_send(tju_tcp_t* sock, const void *buffer, int len){
 }
 
 
-/*
-接收数据
-len是数据长度，不包含包头
-*/
+/*接收数据
+len是包体长度(不包包头)，buffer是待发送消息的起始指针*/
 int tju_recv(tju_tcp_t* sock, void *buffer, int len){
-    while(sock->received_len <= 0){
-        // 阻塞
-    }
+    // 没有消息就阻塞
+    while(sock->received_len <= 0);
 
     while(pthread_mutex_lock(&(sock->recv_lock)) != 0); // 加锁
-
-    int read_len = 0; //实际读取的长度
+    int read_len = 0; // 实际读取的长度
     /*从中读取len长度的数据
     lem: 要读取的数据长度*/
     if (sock->received_len >= len){ //不能从缓冲区一次读取
@@ -271,6 +253,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
     uint32_t pkt_ack = get_ack(pkt);
     uint16_t pkt_hlen = get_hlen(pkt);
     uint16_t pkt_plen = get_plen(pkt);
+    uint16_t pkt_data_len = pkt_plen - DEFAULT_HEADER_LEN; // 包体长度
     uint8_t pkt_flags = get_flags(pkt);
     uint16_t pkt_adv_win = get_advertised_window(pkt);
 
@@ -486,20 +469,17 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
 
-    // 把收到的数据（包体）放到接受缓冲区
-    uint32_t data_len = get_plen(pkt) - DEFAULT_HEADER_LEN;//包体长度
-
     while(pthread_mutex_lock(&(sock->recv_lock)) != 0); // 加锁
-    // 如果接收缓冲区未初始化
+    // 给接收缓冲区分配空间
     if(sock->received_buf == NULL) { 
-        sock->received_buf = malloc(data_len);
+        sock->received_buf = malloc(pkt_data_len);
     }
-    // 如果接收缓冲区已经初始化
     else {
-        sock->received_buf = realloc(sock->received_buf, sock->received_len + data_len);
+        sock->received_buf = realloc(sock->received_buf, sock->received_len + pkt_data_len);
     }
-    memcpy(sock->received_buf + sock->received_len, pkt + DEFAULT_HEADER_LEN, data_len);
-    sock->received_len += data_len;
+    // 把收到的数据（包体）放到接收缓冲区
+    memcpy(sock->received_buf + sock->received_len, pkt + DEFAULT_HEADER_LEN, pkt_data_len);
+    sock->received_len += pkt_data_len;
     pthread_mutex_unlock(&(sock->recv_lock)); // 解锁
 
     return 0;

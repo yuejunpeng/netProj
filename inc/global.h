@@ -55,16 +55,15 @@
 
 // TCP 发送窗口
 typedef struct {
-	uint16_t window_size;
-
-  uint32_t base;
-  uint32_t nextseq;
+	uint16_t window_size; // 窗口大小
+	uint32_t base; // 发送窗口的起始位置, base = LastByteAcked + 1
+	uint32_t nextseq; // 发送窗口后的第一个位置, nextseq = LastByteSent + 1
 //   uint32_t estmated_rtt;
 //   int ack_cnt;
 //   pthread_mutex_t ack_cnt_lock;
 //   struct timeval send_time;
 //   struct timeval timeout;
-  uint16_t rwnd; 
+	uint16_t rwnd; // 
 //   int congestion_status;
 //   uint16_t cwnd; 
 //   uint16_t ssthresh; 
@@ -77,7 +76,9 @@ typedef struct {
 //   received_packet_t* head;
 //   char buf[TCP_RECVWN_SIZE];
 //   uint8_t marked[TCP_RECVWN_SIZE];
-//   uint32_t expect_seq;
+	uint32_t expect_seq; // 确认号，每次receive时更新
+	// int LastByteRead; // 最后一个已读取的字节，用于流量控制
+	// int LasyByteRcvd; // 最后一个已接收到的字节，用于流量控制
 } receiver_window_t;
 
 // TCP 窗口 每个建立了连接的TCP都包括发送和接受两个窗口
