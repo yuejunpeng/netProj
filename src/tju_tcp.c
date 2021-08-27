@@ -212,7 +212,7 @@ int tju_send(tju_tcp_t* sock, const void *buffer, int len){
 
     free(data);
 
-    printf("发送数据成功！");
+    printf("发送数据成功！\n");
     return 0;
 }
 
@@ -254,7 +254,7 @@ int tju_recv(tju_tcp_t* sock, void *buffer, int len){
 
     pthread_mutex_unlock(&(sock->recv_lock)); // 解锁
 
-    printf("接收数据成功！");
+    printf("接收数据成功！\n");
 
     return 0;
 }
@@ -281,7 +281,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         tju_tcp_t* new_conn = (tju_tcp_t*)malloc(sizeof(tju_tcp_t));
 
         //初始化new_conn
-        new_conn->state = LISTEN;// 有待讨论
+        new_conn->state = LISTEN;
 
         pthread_mutex_init(&(new_conn->send_lock), NULL);
         new_conn->sending_buf = NULL;
@@ -312,7 +312,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
         // 设置new_conn本机地址
         tju_sock_addr local_addr;
-        local_addr.ip = new_conn->bind_addr.ip;  //具体的IP地址
+        local_addr.ip = sock->bind_addr.ip;  //具体的IP地址
         local_addr.port = sock->bind_addr.port;
         new_conn->established_local_addr = local_addr;
 
@@ -320,6 +320,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
         established_socks[hashval] = new_conn;
         semi_conn_socks[hashval] = new_conn;
+        printf("new_conn被放入e_hash和半连接列表\n");
 
         // 发送SYN,ACK
         send_syn_ack(new_conn, 1, pkt_ack+1, TCP_RECVWN_SIZE);
@@ -357,6 +358,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
                 sock->established_remote_addr.ip, sock->established_remote_addr.port);
         semi_conn_socks[hashval] = NULL;
         full_conn_socks[hashval] = sock;
+        printf("new_conn从半连接列表取出，被放到全连接列表\n");
 
         sock->state = ESTABLISHED;
         printf("进入ESTABLISHED状态\n");
@@ -374,68 +376,65 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
         // 进入SYN_RECV状态
         sock->state = SYN_RECV;
-
-        printf("进入SYN_RECV，过程结束\n");
+        printf("进入SYN_RECV\n");
     }
 
 
-    // 如果在SYN_SENT状态时超时或者close（待实现）
+    // 如果在SYN_SENT状态时超时或者close（缺timer，待实现）
     // 进入close状态
 
 
-    // 如果在ESTABLISHED状态下收到FIN（第二、三次挥手）
+    // 如果在ESTABLISHED状态下收到FIN（四次挥手）
     if (sock->state==ESTABLISHED && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
-        printf("处于ESTABLISHED状态下，收到FIN（第二、三次挥手）\n");
+        printf("处于ESTABLISHED状态下，收到FIN\n");
+        printf("第一次挥手完成\n");
+
         // 发送FIN,ACK
         send_fin_ack(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
 
         // 进入CLOSE_WAIT状态
         sock->state = CLOSE_WAIT;
+        printf("进入CLOSE_WAIT状态\n");
 
-        printf("第二次挥手完成！\n");
+        printf("第二次挥手完成\n");
 
         // 等待数据发送完
         sleep(5); // 这里要研究研究
+        printf("等待数据发送完\n");
 
         // 发送FIN
         send_fin(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
 
         // 进入LAST_ACK
         sock->state = LAST_ACK;
+        printf("进入LAST_ACK状态\n");
 
         printf("第三次挥手完成！\n");
     }
 
 
-    // 如果在LAST_ACK状态收到FIN,ACK（即将关闭）
-    if (sock->state==LAST_ACK && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
-        printf("处于LAST_ACK状态下，收到FIN,ACK（即将关闭）\n");
-
-        sock->state = CLOSED;
-
-        printf("进入CLOSED状态\n");
-    }
-
-
-    // 如果在FIN_WAIT_1状态收到FIN,ACK（第二次挥手）
+    // 如果在FIN_WAIT_1状态收到FIN,ACK（四次挥手）
     if (sock->state==FIN_WAIT_1 && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
-        printf("处于FIN_WAIT_1状态下，收到FIN,ACK（第二次挥手）\n");
+        printf("处于FIN_WAIT_1状态下，收到FIN,ACK\n");
 
         sock->state = FIN_WAIT_2;
 
         printf("进入FIN_WAIT_2\n");
+        printf("第二次挥手完成\n");
     }
 
 
-    // 如果在FIN_WAIT_2状态收到FIN（第四次挥手）
+    // 如果在FIN_WAIT_2状态收到FIN（四次挥手）
     if (sock->state==FIN_WAIT_2 && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
-        printf("处于FIN_WAIT_2状态下，收到FIN（第四次握手）\n");
+        printf("处于FIN_WAIT_2状态下，收到FIN\n");
+        printf("第三次挥手完成\n");
 
         // 发送FIN,ACK
         send_fin_ack(sock, pkt_ack, pkt_seq+1, TCP_RECVWN_SIZE);
 
         // 进入TIME_WAIT状态
         sock->state = TIME_WAIT;
+        printf("进入TIME_WAIT状态\n");
 
         printf("第四次挥手完成\n");
 
@@ -444,6 +443,17 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         sock->state = CLOSED;
 
         printf("等待2MSS后，进入CLOSED状态\n");
+    }
+
+
+    // 如果在LAST_ACK状态收到FIN,ACK（四次挥手）
+    if (sock->state==LAST_ACK && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
+        printf("处于LAST_ACK状态下，收到FIN,ACK\n");
+
+        sock->state = CLOSED;
+
+        printf("进入CLOSED状态\n");
+        printf("第四次挥手完成\n");
     }
 
 
@@ -456,7 +466,6 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
         // 进入CLOSING状态
         sock->state = CLOSING;
-
         printf("进入CLOSING\n");
     }
 
@@ -467,7 +476,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
         // 进入TIME_WAIT状态
         sock->state = TIME_WAIT;
-        printf("进入TIME_WAIT\n");
+        printf("进入TIME_WAIT状态\n");
 
         // 等待2MSS后关闭
         sleep(5); // 还需进一步研究
@@ -510,6 +519,8 @@ int tju_close (tju_tcp_t* sock){
         // 进入FIN_WAIT_1
         sock->state = FIN_WAIT_1;
         printf("状态由ESTABLISHED变为FIN_WAIT_1\n");
+
+        printf("第一次挥手完成\n");
     }
 
     if (sock->state==CLOSE_WAIT) {
@@ -528,7 +539,6 @@ int tju_close (tju_tcp_t* sock){
 
     // 阻塞等待状态为CLOSED
     while(sock->state != CLOSED);
-    printf("状态变为CLOSED\n");
 
     // 清理占用
     int hashval = cal_hash(sock->established_local_addr.ip, sock->established_local_addr.port, 

@@ -25,14 +25,18 @@ void onTCPPocket(char* pkt){
 
     // 首先查找已经建立连接的socket哈希表
     if (established_socks[hashval]!=NULL){
+        printf("e_hash调用handle_packet\n");
         tju_handle_packet(established_socks[hashval], pkt);
+        printf("handle_packet调用结束\n");
         return;
     }
 
     // 没有的话再查找监听中的socket哈希表
     hashval = cal_hash(local_ip, local_port, 0, 0); //监听的socket只有本地监听ip和端口 没有远端
     if (listen_socks[hashval]!=NULL){
+        printf("l_hash调用handle_packet\n");
         tju_handle_packet(listen_socks[hashval], pkt);
+        printf("handle_packet调用结束\n");
         return;
     }
 
