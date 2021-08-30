@@ -172,7 +172,7 @@ int tju_connect(tju_tcp_t* sock, tju_sock_addr target_addr){
     // 阻塞等待进入ESTABLISHED状态，状态的改变在tju_handle_packet
     while (sock->state != ESTABLISHED);
 
-    sleep(3);
+    sleep(1);
 
     printf("connect完成！\n");
     
@@ -258,7 +258,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
     uint16_t pkt_adv_win = get_advertised_window(pkt);
 
     // 如果在LISTEN状态下收到SYN（三次握手）
-    if (sock->state==LISTEN && pkt_flags==cal_flags(0, 0, 0, 0, 1, 0, 0, 0)) {
+    if (sock->state==LISTEN && pkt_flags==SYN_FLAG_MASK) {
         printf("处于listen状态下，收到SYN\n");
         // 创建一个new_socket
         tju_tcp_t* new_conn = (tju_tcp_t*)malloc(sizeof(tju_tcp_t));
@@ -303,7 +303,6 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         int hashval = cal_hash(local_addr.ip, local_addr.port, remote_addr.ip, remote_addr.port);
         established_socks[hashval] = new_conn;
         semi_conn_socks[hashval] = new_conn;
-        printf("new_conn被放入e_hash和半连接列表\n");
 
         // 发送SYN,ACK
         send_syn_ack(new_conn, 1, pkt_ack+1, TCP_RECVWN_SIZE);
@@ -317,7 +316,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在SYN_SENT状态下收到SYN,ACK（三次握手）
-    if (sock->state==SYN_SENT && pkt_flags==cal_flags(0, 1, 0, 0, 1, 0, 0, 0)) {
+    if (sock->state==SYN_SENT && pkt_flags==SYN_FLAG_MASK+ACK_FLAG_MASK) {
         printf("处于SYN_SENT状态下，收到SYN,ACK\n");
         printf("第二次握手完成！\n");
 
@@ -333,7 +332,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在SYN_RECV状态下收到ACK（三次握手）
-    if (sock->state==SYN_RECV && pkt_flags==cal_flags(0, 1, 0, 0, 0, 0, 0, 0)) {
+    if (sock->state==SYN_RECV && pkt_flags==ACK_FLAG_MASK) {
         printf("处于SYN_RECV状态下，收到ACK\n");
         
         // 将new_conn从半连接列表取出，放到全连接列表
@@ -341,7 +340,6 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
                 sock->established_remote_addr.ip, sock->established_remote_addr.port);
         semi_conn_socks[hashval] = NULL;
         full_conn_socks[hashval] = sock;
-        printf("new_conn从半连接列表取出，被放到全连接列表\n");
 
         sock->state = ESTABLISHED;
         printf("进入ESTABLISHED状态\n");
@@ -351,7 +349,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
     
     // 如果在SYN_SENT状态下收到SYN（同时打开）
-    if (sock->state==SYN_SENT && pkt_flags==cal_flags(0, 0, 0, 0, 1, 0, 0, 0)) {
+    if (sock->state==SYN_SENT && pkt_flags==SYN_FLAG_MASK) {
         printf("处于SYN_SENT状态下，收到SYN（同时打开）\n");
 
         // 发送SYN,ACK
@@ -368,7 +366,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在ESTABLISHED状态下收到FIN（四次挥手）
-    if (sock->state==ESTABLISHED && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
+    if (sock->state==ESTABLISHED && pkt_flags==FIN_FLAG_MASK) {
         printf("处于ESTABLISHED状态下，收到FIN\n");
         printf("第一次挥手完成\n");
 
@@ -382,7 +380,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         printf("第二次挥手完成\n");
 
         // 等待数据发送完
-        sleep(5); // 这里要研究研究
+        sleep(1); // 这里要研究研究
         printf("等待数据发送完\n");
 
         // 发送FIN
@@ -397,7 +395,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在FIN_WAIT_1状态收到FIN,ACK（四次挥手）
-    if (sock->state==FIN_WAIT_1 && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
+    if (sock->state==FIN_WAIT_1 && pkt_flags==FIN_FLAG_MASK+ACK_FLAG_MASK) {
         printf("处于FIN_WAIT_1状态下，收到FIN,ACK\n");
 
         sock->state = FIN_WAIT_2;
@@ -408,7 +406,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在FIN_WAIT_2状态收到FIN（四次挥手）
-    if (sock->state==FIN_WAIT_2 && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
+    if (sock->state==FIN_WAIT_2 && pkt_flags==FIN_FLAG_MASK) {
         printf("处于FIN_WAIT_2状态下，收到FIN\n");
         printf("第三次挥手完成\n");
 
@@ -422,7 +420,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         printf("第四次挥手完成\n");
 
         // 等待2MSS后关闭
-        sleep(5); // 还需进一步研究
+        sleep(1); // 还需进一步研究
         sock->state = CLOSED;
 
         printf("等待2MSS后，进入CLOSED状态\n");
@@ -430,7 +428,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在LAST_ACK状态收到FIN,ACK（四次挥手）
-    if (sock->state==LAST_ACK && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
+    if (sock->state==LAST_ACK && pkt_flags==FIN_FLAG_MASK+ACK_FLAG_MASK) {
         printf("处于LAST_ACK状态下，收到FIN,ACK\n");
 
         sock->state = CLOSED;
@@ -441,7 +439,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在FIN_WAIT_1状态收到FIN（同时关闭）
-    if (sock->state==FIN_WAIT_1 && pkt_flags==cal_flags(0, 0, 0, 0, 0, 1, 0, 0)) {
+    if (sock->state==FIN_WAIT_1 && pkt_flags==FIN_FLAG_MASK) {
         printf("处于FIN_WAIT_1状态下，收到FIN（同时关闭）\n");
 
         // 发送FIN,ACK
@@ -454,7 +452,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
 
 
     // 如果在CLOSING状态收到FIN,ACK（同时关闭）
-    if (sock->state==CLOSING && pkt_flags==cal_flags(0, 1, 0, 0, 0, 1, 0, 0)) {
+    if (sock->state==CLOSING && pkt_flags==FIN_FLAG_MASK+ACK_FLAG_MASK) {
         printf("处于CLOSING状态下，收到FIN,ACK（同时关闭）\n");
 
         // 进入TIME_WAIT状态
@@ -462,7 +460,7 @@ int tju_handle_packet(tju_tcp_t* sock, char* pkt){
         printf("进入TIME_WAIT状态\n");
 
         // 等待2MSS后关闭
-        sleep(5); // 还需进一步研究
+        sleep(1); // 还需进一步研究
         sock->state = CLOSED;
         printf("等待2MSS后，进入CLOSED状态\n");
     }
@@ -541,10 +539,11 @@ uint16_t generate_port() {
     return port;
 }
 
+
 // 发送SYN
 void send_syn(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
     uint16_t plen = DEFAULT_HEADER_LEN;
-    uint8_t flags = cal_flags(0, 0, 0, 0, 1, 0, 0, 0);
+    uint8_t flags = SYN_FLAG_MASK;
     char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port,
             seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
     sendToLayer3(msg, DEFAULT_HEADER_LEN);
@@ -555,7 +554,7 @@ void send_syn(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
 // 发送SYN,ACK
 void send_syn_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
     uint16_t plen = DEFAULT_HEADER_LEN;
-    uint8_t flags = cal_flags(0, 1, 0, 0, 1, 0, 0, 0);
+    uint8_t flags = SYN_FLAG_MASK+ACK_FLAG_MASK;
     char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
             seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
     sendToLayer3(msg, DEFAULT_HEADER_LEN);
@@ -566,7 +565,7 @@ void send_syn_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win)
 // 发送FIN
 void send_fin(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
     uint16_t plen = DEFAULT_HEADER_LEN;
-    uint8_t flags = cal_flags(0, 0, 0, 0, 0, 1, 0, 0);
+    uint8_t flags = FIN_FLAG_MASK;
     char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
             seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
     sendToLayer3(msg, DEFAULT_HEADER_LEN);
@@ -577,7 +576,7 @@ void send_fin(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
 // 发送FIN,ACK
 void send_fin_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
     uint16_t plen = DEFAULT_HEADER_LEN;
-    uint8_t flags = cal_flags(0, 1, 0, 0, 0, 1, 0, 0);
+    uint8_t flags = FIN_FLAG_MASK+ACK_FLAG_MASK;
     char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
             seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
     sendToLayer3(msg, DEFAULT_HEADER_LEN);
@@ -588,7 +587,7 @@ void send_fin_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win)
 // 发送ACK
 void send_ack(tju_tcp_t* sock, uint32_t seq, uint32_t ack, uint16_t adv_win) {
     uint16_t plen = DEFAULT_HEADER_LEN;
-    uint8_t flags = cal_flags(0, 1, 0, 0, 0, 0, 0, 0);
+    uint8_t flags = ACK_FLAG_MASK;
     char* msg = create_packet_buf(sock->established_local_addr.port, sock->established_remote_addr.port, 
             seq, ack, DEFAULT_HEADER_LEN, plen, flags, adv_win, 0, NULL, 0);
     sendToLayer3(msg, DEFAULT_HEADER_LEN);

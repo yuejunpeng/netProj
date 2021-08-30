@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     // conn_port = my_socket->established_remote_addr.port;
     // printf("my_socket established_remote_addr ip %d port %d\n", conn_ip, conn_port);
 
-    sleep(3);
+    sleep(1);
 
     tju_send(my_socket, "hello world", 12);
     tju_send(my_socket, "hello tju", 10);
@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
     tju_recv(my_socket, (void*)buf, 10);
     printf("client recv %s\n", buf);
 
-    sleep(5);
+    sleep(1);
     tju_close(my_socket);
 
     return EXIT_SUCCESS;

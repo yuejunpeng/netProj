@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     // printf("new_conn established_remote_addr ip %d port %d\n", conn_ip, conn_port);
 
 
-    sleep(5);
+    sleep(1);
     
     tju_send(new_conn, "hello world", 12);
     tju_send(new_conn, "hello tju", 10);
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     tju_recv(new_conn, (void*)buf, 10);
     printf("server recv %s\n", buf);
     
-    sleep(60);
+    sleep(8);
     // tju_close(new_conn);
 
     return EXIT_SUCCESS;

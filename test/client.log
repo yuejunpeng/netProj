@@ -1,0 +1,11 @@
+socket创建完成！
+分配端口成功（debug）!
+已经发送一个SYN！
+第一次握手完成
+进入SYN_SENT状态
+处于SYN_SENT状态下，收到SYN,ACK
+第二次握手完成！
+已经发送一个ACK！
+进入ESTABLISHED状态！
+第三次握手完成！
+connect完成！
