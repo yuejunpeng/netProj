@@ -36,6 +36,8 @@ int main(int argc, char **argv) {
     tju_recv(my_socket, (void*)buf, 12);
     printf("client recv %s\n", buf);
 
+    // sleep(1);
+    
     tju_recv(my_socket, (void*)buf, 10);
     printf("client recv %s\n", buf);
 

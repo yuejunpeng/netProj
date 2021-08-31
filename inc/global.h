@@ -21,7 +21,7 @@
 #define SIZE16 2
 #define SIZE8  1
 
-// 一些Flag
+// 一些Flag，应该可以再加一些吧
 #define NO_FLAG 0
 #define NO_WAIT 1
 #define TIMEOUT 2
@@ -56,14 +56,14 @@
 // TCP 发送窗口
 typedef struct {
 	uint16_t window_size; // 窗口大小
-	uint32_t base; // 发送窗口的起始位置, base = LastByteAcked + 1
-	uint32_t nextseq; // 发送窗口后的第一个位置, nextseq = LastByteSent + 1
+	uint32_t base; // base = LastByteAcked + 1
+	uint32_t nextseq; // 主要用来当作序号seq, nextseq = LastByteSent + 1
 //   uint32_t estmated_rtt;
-//   int ack_cnt;
+//   int ack_cnt; // 应该是三次冗余ACK使用
 //   pthread_mutex_t ack_cnt_lock;
 //   struct timeval send_time;
 //   struct timeval timeout;
-	uint16_t rwnd; // 
+	uint16_t rwnd; 
 //   int congestion_status;
 //   uint16_t cwnd; 
 //   uint16_t ssthresh; 
@@ -77,6 +77,7 @@ typedef struct {
 //   char buf[TCP_RECVWN_SIZE];
 //   uint8_t marked[TCP_RECVWN_SIZE];
 	uint32_t expect_seq; // 确认号，每次receive时更新
+	//	以下是新加的：
 	// int LastByteRead; // 最后一个已读取的字节，用于流量控制
 	// int LasyByteRcvd; // 最后一个已接收到的字节，用于流量控制
 } receiver_window_t;

@@ -26,6 +26,7 @@ void onTCPPocket(char* pkt){
     // 首先查找已经建立连接的socket哈希表
     if (established_socks[hashval]!=NULL){
         tju_handle_packet(established_socks[hashval], pkt);
+        // printf("onTCPPocket结束！\n");
         return;
     }
 
@@ -106,6 +107,7 @@ void* receive_thread(void* arg){
             // 通知内核收到一个完整的TCP报文
             onTCPPocket(pkt);
             free(pkt);
+            // printf("处理完了一个包\n");   
         }
     }
 }

@@ -6,8 +6,9 @@ int main(int argc, char **argv) {
     startSimulation();
 
     tju_tcp_t* my_server = tju_socket();
+    // printf("server的expect_seq是%d\n",my_server->window.wnd_recv->expect_seq);
     // printf("my_tcp state %d\n", my_server->state);
-    
+
     tju_sock_addr bind_addr;
     bind_addr.ip = inet_network("10.0.0.1");
     bind_addr.port = 1234;
@@ -35,16 +36,20 @@ int main(int argc, char **argv) {
     sleep(1);
     
     tju_send(new_conn, "hello world", 12);
+    // tju_send(new_conn, "hello world hello world hello world hello world \n", 49);
     tju_send(new_conn, "hello tju", 10);
 
     char buf[2021];
     tju_recv(new_conn, (void*)buf, 12);
+    // tju_recv(new_conn, (void*)buf, 49);
     printf("server recv %s\n", buf);
+
+    // sleep(1);
 
     tju_recv(new_conn, (void*)buf, 10);
     printf("server recv %s\n", buf);
     
-    sleep(8);
+    sleep(3);
     // tju_close(new_conn);
 
     return EXIT_SUCCESS;
