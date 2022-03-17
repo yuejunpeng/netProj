@@ -1,23 +1,25 @@
 # TJU_TCP
 
 #### 介绍
-2021年天津大学计算机网络实践
+在已有框架下，根据TCP标准协议，使用C语言在应用层模拟TCP协议。
+
+框架为——实践项目环境.zip，请自行下载。
+
+环境的配置请参考——实践项目环境搭建和测试.pdf
 
 #### 软件架构
-软件架构说明
+使用C语言进行编写，借助Oracle VM VirtualBox和Vagrant软件，详情参考——实践项目环境搭建和测试.pdf
 
 
 #### 安装教程
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+参考——实践项目环境搭建和测试.pdf
 
 #### 使用说明
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+使用时需要开启两个虚拟机，相互发送消息。
+
+详情请参考——实践项目环境搭建和测试.pdf
 
 #### 参与贡献
 
@@ -29,9 +31,8 @@
 
 #### 特技
 
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+无
+
+#### 特别提示
+
+如有任何问题，请邮件联系作者：yuejunpengtju@163.com

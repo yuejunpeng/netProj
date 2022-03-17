@@ -3,12 +3,7 @@
 
 int TEST_BACKEND_UDPSOCKET_ID;
 
-/*
-0：还没有收到任何包 
-1：收到SYN 已发送SYNACK
-2：成功返回
-*/
-int STATE = 0; 
+int STATE = 0; // 0 还没有收到任何包 1 收到SYN 已发送SYNACK 2 成功返回
 
 time_t start_time,now_time;  
 int timer_maxtime  = 0;
@@ -66,7 +61,7 @@ void onTCPPocketTest(char* pkt){
     if ( (get_flags(pkt)>>2) & 1 == 1 ){ // ACK 是第三位
         ack_flag = 1;
     }
-    if ( (get_flags(pkt)>>1) & 1 == 1 ){ // FIN 是第二位
+    if ( (get_flags(pkt)>>1) & 1 == 1 ){ // SYN 是第二位
         fin_flag = 1;
     }
 

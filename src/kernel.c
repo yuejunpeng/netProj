@@ -10,6 +10,8 @@ void onTCPPocket(char* pkt){
 
     char hostname[8];
     gethostname(hostname, 8);
+
+    printf("hostname为%s\n",hostname);
     uint32_t remote_ip, local_ip;
     if(strcmp(hostname,"server")==0){ // 自己是服务端 远端就是客户端
         local_ip = inet_network("10.0.0.1");
@@ -22,11 +24,13 @@ void onTCPPocket(char* pkt){
     int hashval;
     // 根据4个ip port 组成四元组 查找有没有已经建立连接的socket
     hashval = cal_hash(local_ip, local_port, remote_ip, remote_port);
+    printf("哈希值为%d\n",hashval);
 
     // 首先查找已经建立连接的socket哈希表
     if (established_socks[hashval]!=NULL){
+        printf("在ehash中找到socket，进入handle_packet\n");
         tju_handle_packet(established_socks[hashval], pkt);
-        // printf("onTCPPocket结束！\n");
+        printf("onTCPPocket结束！\n");
         return;
     }
 
@@ -39,6 +43,7 @@ void onTCPPocket(char* pkt){
 
     // 都没找到 丢掉数据包
     printf("找不到能够处理该TCP数据包的socket, 丢弃该数据包\n");
+    sleep(1);
     return;
 }
 
@@ -96,10 +101,13 @@ void* receive_thread(void* arg){
         // MSG_PEEK 表示看一眼 不会把数据从缓冲区删除
         len = recvfrom(BACKEND_UDPSOCKET_ID, hdr, DEFAULT_HEADER_LEN, MSG_PEEK, (struct sockaddr *)&from_addr, &from_addr_size);
         // 一旦收到了大于header长度的数据 则接受整个TCP包
+        
+        printf("收到一个包！------------------------------------\n");
         if(len >= DEFAULT_HEADER_LEN){
             plen = get_plen(hdr); 
             pkt = malloc(plen);
             buf_size = 0;
+            printf("包的长度大于DEFAULT_HEADER_LEN，开始处理\n");
             while(buf_size < plen){ // 直到接收到 plen 长度的数据 接受的数据全部存在pkt中
                 n = recvfrom(BACKEND_UDPSOCKET_ID, pkt + buf_size, plen - buf_size, NO_FLAG, (struct sockaddr *)&from_addr, &from_addr_size);
                 buf_size = buf_size + n;
@@ -107,10 +115,189 @@ void* receive_thread(void* arg){
             // 通知内核收到一个完整的TCP报文
             onTCPPocket(pkt);
             free(pkt);
-            // printf("处理完了一个包\n");   
+            printf("处理完了一个包\n");   
         }
     }
 }
+
+
+
+// 计时器线程，始终开启，判断是否超时等
+void* timer_my_thread(void* arg){
+    tju_tcp_t* sock = (tju_tcp_t*) arg;
+    printf("进入计时器线程\n");
+    printf("计时器初始化\n");
+    // 初始化计时器
+    sock->timer.timer_istimeout = 0;
+    sock->timer.timer_maxtime = 5.0;
+    sock->timer.quit_timer = 0; // 先设置为不在运行中，调用时再置为1.
+
+    
+    
+    while(sock->timer.quit_timer==0)
+    {
+        // printf("阻塞，timer还未初始化\n");
+        // sleep(0.1);
+    };
+
+    while(1)
+    {
+        // if(sock->timer.quit_timer==0){
+        //     continue;
+        // }
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        sock->timer.now_time =(double) (tv.tv_sec + tv.tv_usec / 1000000.00);
+        // printf("当前时间为%f\n",sock->timer.now_time);
+        // printf("当前时间获取成功\n");
+        // sleep(1);
+        // sock->timer.now_time = time(NULL);
+        // if (difftime(sock->timer.now_time, sock->timer.start_time)>sock->timer.timer_maxtime){ // 超时。时间单位的问题，之后再讨论
+        if ( (sock->timer.now_time - sock->timer.start_time) > sock->timer.timer_maxtime)
+        {
+            // printf("当前时间为%f\n",sock->timer.now_time);
+            printf("当前时间为%f，开始时间为%f，超时间隔为%f\n",sock->timer.now_time,sock->timer.start_time,sock->timer.timer_maxtime);
+            printf("超时！seq为%d====================================\n",sock->timer.seq);
+            // sleep(10);
+            sock->timer.timer_istimeout = 1;// 超时标志位
+            
+
+            // 上锁
+            while(pthread_mutex_lock(&(sock->timer.timer_seq_lock)) != 0); // 加锁
+
+            printf("计时器线程抢到了timer_seq_lock\n");
+
+            sock->timer.quit_timer = 0; // 计时器停止
+            
+            
+            
+            // 超时重传.
+            // if(sock->window.wnd_send->rwnd != TCP_RECVWN_SIZE)
+            // {
+
+            // }
+
+
+            // if(sock->window.wnd_send->resend_buf[sock->timer.seq - sock->window.wnd_send->base] == NULL)
+            //     return (void *)(0);
+
+            // // 如果是同一个包出现两次及以上超时
+            // if(sock->window.wnd_send->resend_buf[sock->timer.seq - sock->window.wnd_send->base] == NULL)
+            // {
+            //     // printf("return\n");
+            //     //return (void *)(0);
+
+            //     // 超时间隔加倍
+            //     sock->window.wnd_send->rto *=2;
+
+            //     struct timeval tv;
+            //     gettimeofday(&tv, NULL);
+            //     sock->timer.start_time = (double)(tv.tv_sec + tv.tv_usec / 1000000.0);
+            //     printf("超时重新计时，开始时间为%f\n",sock->timer.start_time);
+
+            //     sock->timer.timer_maxtime = sock->window.wnd_send->rto;
+            //     sock->timer.timer_istimeout = 0;
+
+            //     sock->timer.seq=sock->timer.seq;
+            //     sock->timer.quit_timer = 1;// 计时器开启
+
+
+            //     // 解锁
+            //     pthread_mutex_unlock(&(sock->timer.timer_seq_lock)); // 解锁
+            //     printf("计时器线程解开了timer_seq_lock\n");
+            //     continue;
+            // }
+
+            char* msg = sock->window.wnd_send->resend_buf[sock->timer.seq - sock->window.wnd_send->base]->msg;
+            uint16_t plen = sock->window.wnd_send->resend_buf[sock->timer.seq - sock->window.wnd_send->base]->plen;
+            while(sock->window.wnd_send->nextseq - sock->window.wnd_send->base + plen > sock->window.wnd_send->rwnd);
+            sendToLayer3(msg, plen);// 不用create packet，直接发，因为msg本来就是打好的包。
+            printf("sock->timer.seq为%u，sock->window.wnd_send->base为%u\n",sock->timer.seq,sock->window.wnd_send->base);
+            printf("重传包的序号为：%u\n",get_seq(msg));
+            printf("超时重传\n");
+
+            // 超时间隔加倍
+            sock->window.wnd_send->rto *=2;
+
+            // 重新开启计时器
+            // reset_my_timer(sock->window.wnd_send->rto,sock,sock->timer.seq);
+
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            sock->timer.start_time = (double)(tv.tv_sec + tv.tv_usec / 1000000.0);
+            printf("超时重新计时，开始时间为%f\n",sock->timer.start_time);
+
+            sock->timer.timer_maxtime = sock->window.wnd_send->rto;
+            sock->timer.timer_istimeout = 0;
+
+            sock->timer.seq=sock->timer.seq;
+            sock->timer.quit_timer = 1;// 计时器开启
+
+
+            // 解锁
+            pthread_mutex_unlock(&(sock->timer.timer_seq_lock)); // 解锁
+            printf("计时器线程解开了timer_seq_lock\n");
+        }
+    }
+}
+
+// 尝试开启（重启）计时器，传入当前的RTO，发送包的时候用。
+void reset_my_timer(double maxtime, tju_tcp_t* sock, uint32_t seq){
+    if(sock->timer.quit_timer==0)// 如果计时器处于关闭状态，则开启，否则不作为。
+    {
+        // sock->timer.start_time = time(NULL);
+        
+        printf("开启（重启）计时器！\n");
+        printf("已开启计时器时，当前RTO为%f\n",sock->window.wnd_send->rto);
+
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        sock->timer.start_time = (double)(tv.tv_sec + tv.tv_usec / 1000000.0);
+        printf("计时开始时间为%f\n",sock->timer.start_time);
+
+        sock->timer.timer_maxtime = maxtime;
+        sock->timer.timer_istimeout = 0;
+        // sock->timer.sock=sock;// 貌似不需要
+        
+        // 上锁
+        while(pthread_mutex_lock(&(sock->timer.timer_seq_lock)) != 0); // 加锁
+        printf("timer_seq_lock上锁\n");
+        sock->timer.seq=seq;
+        sock->timer.quit_timer = 1;// 计时器开启
+
+        // 解锁
+        pthread_mutex_unlock(&(sock->timer.timer_seq_lock)); // 解锁
+        printf("timer_seq_lock解锁\n");
+    }
+    
+}
+
+// 强制重启计时器，传入当前的RTO，收到ACK时用。
+void reset_my_timer_f(double maxtime, tju_tcp_t* sock, uint32_t seq){
+
+    printf("强制重启计时器！\n");
+    printf("之前的seq为%d，现在的seq为%d\n",sock->timer.seq,seq);
+    if(seq == sock->timer.seq)
+    {
+        return;
+    }    
+    
+    
+    printf("强制重启计时器时，当前RTO为%f\n",sock->window.wnd_send->rto);
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    sock->timer.start_time = (double)(tv.tv_sec + tv.tv_usec / 1000000.0);
+    printf("计时开始时间为%f\n",sock->timer.start_time);
+
+    sock->timer.timer_maxtime = maxtime;
+    sock->timer.timer_istimeout = 0;
+    // sock->timer.sock=sock;// 貌似不需要
+    sock->timer.seq=seq;
+    sock->timer.quit_timer = 1;// 计时器开启
+    
+}
+
 
 /*
  开启仿真, 运行起后台线程

@@ -47,6 +47,17 @@ void startSimulation();
 */
 void* receive_thread(void * in);
 
+
+// 计时器线程，始终开启，判断是否超时等
+void* timer_my_thread(void* arg);
+
+// 开启（重启）计时器，传入当前的RTO。
+void reset_my_timer(double maxtime,tju_tcp_t* sock,uint32_t seq);
+
+// 强制重启计时器
+void reset_my_timer_f(double maxtime,tju_tcp_t* sock,uint32_t seq);
+
+
 // 接受UDP的socket的标识符
 int BACKEND_UDPSOCKET_ID;
 

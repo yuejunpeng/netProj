@@ -27,22 +27,31 @@ int main(int argc, char **argv) {
     // conn_port = my_socket->established_remote_addr.port;
     // printf("my_socket established_remote_addr ip %d port %d\n", conn_ip, conn_port);
 
-    sleep(1);
+    sleep(3);
 
-    tju_send(my_socket, "hello world", 12);
-    tju_send(my_socket, "hello tju", 10);
+    // tju_send(my_socket, "hello world", 12);
+    // tju_send(my_socket, "hello tju", 10);
 
-    char buf[2021];
-    tju_recv(my_socket, (void*)buf, 12);
-    printf("client recv %s\n", buf);
+    // char buf[2021];
+    // tju_recv(my_socket, (void*)buf, 12);
+    // printf("client recv %s\n", buf);
 
-    // sleep(1);
+    // // sleep(1);
     
-    tju_recv(my_socket, (void*)buf, 10);
-    printf("client recv %s\n", buf);
+    // tju_recv(my_socket, (void*)buf, 10);
+    // printf("client recv %s\n", buf);
 
-    sleep(1);
-    tju_close(my_socket);
+    // tju_recv(my_socket, (void*)buf, 49);
+    // printf("server recv %s\n", buf);
+
+    for(int i=0;i<100;i++){
+        char buf[16];
+        sprintf(buf , "test message%d\n", i);
+        tju_send(my_socket, buf, 16);
+    }
+
+    sleep(200);
+    // tju_close(my_socket);
 
     return EXIT_SUCCESS;
 }

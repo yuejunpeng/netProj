@@ -33,23 +33,32 @@ int main(int argc, char **argv) {
     // printf("new_conn established_remote_addr ip %d port %d\n", conn_ip, conn_port);
 
 
-    sleep(1);
-    
-    tju_send(new_conn, "hello world", 12);
-    // tju_send(new_conn, "hello world hello world hello world hello world \n", 49);
-    tju_send(new_conn, "hello tju", 10);
-
-    char buf[2021];
-    tju_recv(new_conn, (void*)buf, 12);
-    // tju_recv(new_conn, (void*)buf, 49);
-    printf("server recv %s\n", buf);
-
-    // sleep(1);
-
-    tju_recv(new_conn, (void*)buf, 10);
-    printf("server recv %s\n", buf);
-    
     sleep(3);
+    
+    // tju_send(new_conn, "hello world", 12);
+    
+    // tju_send(new_conn, "hello tju", 10);
+
+    // tju_send(new_conn, "hello world hello world hello world hello world \n", 49);
+
+    // char buf[2021];
+    // tju_recv(new_conn, (void*)buf, 12);
+    
+    // printf("server recv %s\n", buf);
+
+    // // sleep(1);
+
+    // tju_recv(new_conn, (void*)buf, 10);
+    // printf("server recv %s\n", buf);
+
+    for (int i=0; i<100; i++){
+        char buf[16];
+        tju_recv(new_conn, (void*)buf, 16);
+        printf("[RDT TEST] server recv %s", buf);
+        fflush(stdout);
+    }
+    
+    sleep(10);
     // tju_close(new_conn);
 
     return EXIT_SUCCESS;
